@@ -1,0 +1,43 @@
+# Serves the app and forwards only the labeling routes to the Nytka server, adding the token there,
+# so the browser never holds one. The person gate is the SSO proxy in front (Pangolin).
+{
+	admin off
+	auto_https off
+	persist_config off
+}
+
+:8080 {
+	encode gzip
+
+	header {
+		-Server
+		Referrer-Policy no-referrer
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+	}
+
+	handle /healthz {
+		respond "ok" 200
+	}
+
+	@labeling path /api/v1/labeling /api/v1/labeling/*
+	handle @labeling {
+		reverse_proxy {$NYTKA_UPSTREAM:http://nytka:8080} {
+			header_up Authorization "Bearer {$NYTKA_LABELING_TOKEN}"
+			# The SSO proxy's cookies are for it, not for the Nytka server.
+			header_up -Cookie
+		}
+	}
+
+	# Every other server route stays out of reach of this token.
+	handle /api/* {
+		respond 404
+	}
+
+	handle {
+		root * /srv
+		header /sw.js Cache-Control "no-cache"
+		file_server
+	}
+}

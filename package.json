@@ -1,0 +1,16 @@
+{
+  "name": "nytka-labeler",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Label what kind of audio a stretch is, for Nytka's models",
+  "type": "module",
+  "license": "Apache-2.0",
+  "scripts": {
+    "dev": "node test/fake-api.mjs 8787",
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
+    "@playwright/test": "1.64.1"
+  }
+}

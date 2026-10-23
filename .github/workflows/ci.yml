@@ -1,0 +1,54 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium-headless-shell
+      # Every answer button saves, offline and retry paths, accessibility: test/answers.spec.mjs.
+      - run: npx playwright test
+      # The image's proxy: token added, cookies dropped, other routes refused.
+      - run: ./test/container.sh
+
+  secrets:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      # gitleaks-action needs a paid license for organisation repositories; the binary itself is MIT.
+      - name: Scan the history with gitleaks
+        env:
+          VERSION: 8.30.1
+          SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          curl -fsSLo gitleaks.tar.gz "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz"
+          echo "${SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          ./gitleaks git --redact --verbose .
+      # Prints short hashes only: echoing the offending address would publish it in the log.
+      - name: Every commit uses a GitHub noreply address
+        run: |
+          bad=$(git log --format='%h %ae%n%h %ce' \
+            | grep -vE ' ([^ @]+@users\.noreply\.github\.com|noreply@github\.com|chargehand@localhost)$' || true)
+          if [ -n "$bad" ]; then
+            echo "Commits with an address that is not a GitHub noreply one:"
+            echo "$bad" | cut -d' ' -f1 | sort -u
+            exit 1
+          fi
