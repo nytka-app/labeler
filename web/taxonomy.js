@@ -73,6 +73,7 @@ export const ASK = {
 };
 
 export const TASK_NAMES = {
+  mixed: "Mixed",
   device: "Device audio",
   voice: "My voice",
   quiet: "Quiet audio",
@@ -84,3 +85,33 @@ export const TASK_NAMES = {
 export function needsMore(field, value) {
   return (field === "source" && value === "several") || (field === "transcript" && value === "wrong_words");
 }
+
+/**
+ * The feed's fixed yes/no question per task (DESIGN.md section 7). Never phrased from the model's guess, so the
+ * answer is not anchored to it. `value` saves at once; `sheet` opens a one-tap choice of the listed values.
+ */
+export const FEED = {
+  voice: { ask: "source", question: "Is this you?", yes: { label: "Me", value: "me" }, no: { label: "Not me", value: "not_me" } },
+  device: {
+    ask: "source", question: "Is it coming from a device?",
+    yes: { label: "Device", value: "device" },
+    no: { label: "Not a device", sheet: ["me", "live", "call", "none", "cant_tell", "several"] },
+  },
+  quiet: {
+    ask: "transcript", question: "Is the text right?",
+    yes: { label: "Right", value: "right" },
+    no: { label: "Wrong", sheet: ["small_errors", "wrong_words", "made_up", "cant_hear"] },
+  },
+  transcript: {
+    ask: "transcript", question: "Is the text right?",
+    yes: { label: "Right", value: "right" },
+    no: { label: "Wrong", sheet: ["small_errors", "wrong_words", "made_up", "cant_hear"] },
+  },
+  overlap: {
+    ask: "overlap", question: "Several voices at once?",
+    yes: { label: "Several", sheet: ["two", "three_plus"] },
+    no: { label: "One voice", value: "one" },
+  },
+};
+
+export const GOAL = 30;

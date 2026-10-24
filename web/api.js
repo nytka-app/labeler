@@ -27,6 +27,8 @@ export const next = (task, limit = 30) => call(`/next?task=${encodeURIComponent(
 export const answer = (itemId, body) =>
   call(`/${itemId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
+export const labels = (since) => call(`/labels?since=${encodeURIComponent(since)}&limit=500`);
+
 export const voicePending = () => call("/voice/pending");
 
 export const voiceConfirm = (labelIds) =>

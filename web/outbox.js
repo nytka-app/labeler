@@ -13,6 +13,7 @@ const listeners = new Set();
 let timer = null;
 let draining = false;
 let again = false; // an answer arrived while a drain was running
+const sending = new Set();
 
 function open() {
   dbPromise ??= new Promise((resolve) => {
@@ -59,13 +60,26 @@ function emit(event) { for (const fn of listeners) fn(event); }
 /** Events: { type: "saved", itemId, clientId, labelId } | { type: "rejected", itemId, clientId, error } | { type: "pending", count } | { type: "auth" } */
 export function onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 
-export async function enqueue(itemId, body) {
-  await put({ clientId: body.clientId, itemId, body, tries: 0, state: "pending", at: Date.now() });
+/** `delayMs` holds the answer back so Undo can take it out before it is sent; it survives a reload. */
+export async function enqueue(itemId, body, delayMs = 0) {
+  const now = Date.now();
+  await put({ clientId: body.clientId, itemId, body, tries: 0, state: "pending", at: now, notBefore: now + delayMs });
   await drain();
 }
 
-export async function pendingCount() {
-  return (await all()).filter((e) => e.state === "pending").length;
+/** Takes back an answer not yet sent. True when it was still waiting. */
+export async function cancel(clientId) {
+  const e = (await all()).find((x) => x.clientId === clientId);
+  if (!e || e.state !== "pending" || sending.has(clientId)) return false;
+  await remove(clientId);
+  emit({ type: "pending", count: await pendingCount() });
+  return true;
+}
+
+/** Answers not yet on the server. `overdueOnly` leaves out those still inside their undo window. */
+export async function pendingCount(overdueOnly = false) {
+  const now = Date.now();
+  return (await all()).filter((e) => e.state === "pending" && (!overdueOnly || (e.notBefore ?? 0) <= now)).length;
 }
 
 function schedule(ms) {
@@ -79,8 +93,13 @@ export async function drain() {
   let wait = null;
   try {
     again = false;
-    const entries = (await all()).filter((e) => e.state === "pending").sort((a, b) => a.at - b.at);
+    const pending = (await all()).filter((e) => e.state === "pending").sort((a, b) => a.at - b.at);
+    const now = Date.now();
+    const entries = pending.filter((e) => (e.notBefore ?? 0) <= now);
+    const later = pending.filter((e) => (e.notBefore ?? 0) > now).map((e) => e.notBefore - now);
+    if (later.length) wait = Math.min(...later) + 20;
     for (const e of entries) {
+      sending.add(e.clientId);
       try {
         const r = await answer(e.itemId, e.body);
         await remove(e.clientId);
@@ -100,11 +119,13 @@ export async function drain() {
           wait = RETRY_MS[Math.min(e.tries - 1, RETRY_MS.length - 1)];
           break; // keep order; retry the same answer first
         }
+      } finally {
+        sending.delete(e.clientId);
       }
     }
   } finally {
     draining = false;
-    emit({ type: "pending", count: await pendingCount() });
+    emit({ type: "pending", count: await pendingCount(), overdue: await pendingCount(true) });
   }
   if (wait != null) schedule(wait);
   else if (again) await drain();

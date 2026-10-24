@@ -24,8 +24,11 @@ node test/screenshots.mjs    # README screenshots
    `clientId` until then; delivery is at least once, the server dedupes by `clientId`.
 3. **Button handlers capture their value in a closure** (`choice()` in `web/app.js`); never read a value back
    from the element, never inline `onclick`. An earlier labelling page lost every label that way.
-4. **Every button is covered by `test/answers.spec.mjs`**, which checks the bodies the fake server received. A new
-   value or button gets a line there in the same change.
+4. **Every gesture, rail button and sheet value is covered by `test/answers.spec.mjs`**, which checks the bodies the
+   fake server received. A new value, gesture or button gets a line there in the same change.
+8. **The feed's question is fixed per task (`FEED` in `web/taxonomy.js`)** and the model's guess is shown only after
+   the answer; never a "Is this {guess}?" question or a one-gesture "accept the guess".
+9. **Nothing may cover the answer rail.** A toast or overlay over it once made taps scroll the feed and skip clips.
 5. **The browser holds no token.** The proxy adds it (`deploy/Caddyfile`); only `/api/v1/labeling/*` is forwarded.
 6. **Clips never reach a disk cache**: blob URLs in memory, `no-store`, the service worker skips `/api/`.
 7. **Taxonomy codes are stable**: append values, never rename (`web/taxonomy.js`, `docs/api.md`).
