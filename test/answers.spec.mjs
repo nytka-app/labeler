@@ -69,9 +69,8 @@ async function sheetPick(page, field, value) {
 /** Scrolls one screen, as a swipe up (next) or down (back) does. */
 async function flick(page, dir) {
   const i = await index(page);
-  const box = await current(page).getByTestId("card").boundingBox();
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await page.mouse.wheel(0, dir === "up" ? 900 : -900);
+  // Scrolls the feed itself: the same snap and arrival path as a touch flick, without the wheel's emulation quirks.
+  await page.evaluate((d) => { const f = document.getElementById("feed"); f.scrollBy({ top: d * f.clientHeight }); }, dir === "up" ? 1 : -1);
   await movedFrom(page, i, dir === "up" ? i + 1 : i - 1);
 }
 
