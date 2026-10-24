@@ -28,7 +28,8 @@ Tasks and the field each one asks (`ask`): `device` → `source`, `voice` → `s
 
 ### `GET /tasks`
 
-`200 { tasks: [{ task, ask, open, labelled, goal, goalLabel }] }`. `open`: items waiting; `goal` may be null.
+`200 { tasks: [{ task, ask, open, labelled, goal, goalLabel, progress }] }`. `open`: items waiting; `goal` may be null;
+`progress` counts the labels toward `goal` (for `device`, not-device lines).
 
 ### `GET /next?task=device&limit=30`
 
@@ -83,7 +84,7 @@ gone), `speakerKey` (opaque: a voice group id, else the provider label, else nul
 ```
 
 `answeredWith` (optional): `swipe`, `button`, `sheet` or `key`, stored and returned by `GET /labels`. `skipped: true`
-answers `{ labelId: null, superseded: null }`. Every axis field is optional; at least one of them or `skipped: true` is required. `correction` is the whole
+answers `{ labelId: null, superseded: null }`. Limits: `correction` at most 2000 characters, `listenedMs` 0 to 600000. Every axis field is optional; at least one of them or `skipped: true` is required. `correction` is the whole
 corrected text of the item's single line (an item with several lines takes no correction). `skipped: true` returns the item to the queue and stores
 nothing else. `200 { labelId, superseded }`; the same `clientId` again returns the first answer's `labelId` and
 changes nothing. A new answer on an item answered before supersedes the old label (`superseded`: its id). `400`
