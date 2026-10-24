@@ -1,0 +1,2 @@
+# A synthetic header in test/container.sh of the first commit; the proxy test needs a client token to replace.
+f41a3071924a6512f60eebe9cbe4b1601c45a33c:test/container.sh:curl-auth-header:12

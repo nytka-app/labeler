@@ -167,4 +167,6 @@ const server = createServer(async (req, res) => {
 function answered(item) { return [...state.labels.values()].some((l) => l.itemId === item.id); }
 
 const port = Number(process.argv[2] ?? process.env.PORT ?? 8787);
-server.listen(port, "127.0.0.1", () => console.log(`fake labeling API on http://127.0.0.1:${port}/`));
+// FAKE_HOST=0.0.0.0 lets a container reach it on Linux (test/container.sh).
+const host = process.env.FAKE_HOST ?? "127.0.0.1";
+server.listen(port, host, () => console.log(`fake labeling API on http://${host}:${port}/`));
