@@ -275,6 +275,116 @@ fixes the same line twice. Three rules come with it:
 - **No `device` kind yet.** It is queued behind the CLAP shadow model, so until then `device` writes through as
   `media`; the label keeps `device`.
 
+## 7. The feed (proposed 2026-10-24, not built)
+
+The owner asked for a Reels/TikTok feel. The labelling screen becomes a vertical feed in both clients: one clip per
+full screen, it plays on arrival, swipe up for the next. What changes from the desk's sketch, and why, is marked
+**Changed**.
+
+### Gestures
+
+| Gesture | Web (keyboard) | Effect |
+|---|---|---|
+| Swipe right | → | **Yes** to the clip's question |
+| Swipe left | ← | **No**: one-tap sheet of the remaining answers, or a coarse "no" where the taxonomy has one |
+| Swipe up | ↓ or J | Skip to the next clip, no answer (an explicit skip, sent as `skipped`) |
+| Swipe down | ↑ or K | Back to the previous clip; answering it again supersedes the old label |
+| Tap the card | Space | Replay from the start |
+| Long-press | 1–7 | The full answer sheet (every value of the axis, plus optional details) |
+| Undo toast, 4 s | U | Takes the last answer back before it is sent |
+
+Each task asks one **fixed yes/no question**, so left and right always mean the same thing within a task:
+
+| Task | Question | Right | Left |
+|---|---|---|---|
+| `voice` | "Is this you?" | `me` | `not_me` (coarse node, already in the taxonomy); sheet optional |
+| `device` | "Is it coming from a device?" | `device` | sheet: Me · Live person · Call · No voice · Can't tell |
+| `quiet`, `transcript` | "Is the text right?" | `right` | sheet: Small errors · Wrong words (opens the correction) · Made up · Can't hear |
+| `overlap` | "Several voices at once?" | sheet: Two · Three or more | `one` |
+
+**Changed: no double-tap for the most likely answer, and the model's guess is hidden until after the answer.** A
+one-gesture "accept the model" teaches the model its own guesses; the labels become an echo, and the evaluation of
+that model is void. The question is fixed per task, never "Is this {guess}?", for the same reason. After the answer,
+the card flashes the model's guess for half a second ("model said: device, 0.71"), which keeps the feedback without
+anchoring the ear.
+
+**Changed: a left swipe on `device` opens a sheet instead of saving "not device".** "Me" versus "live person" is the
+detector's worst false alarm (the owner's own voice), so a plain "no" would lose the one distinction that matters
+most. It costs one extra tap only on a "no".
+
+Every gesture also has a visible button in a slim rail at the bottom (Yes, No, Skip, More), for screen readers,
+switch control and anyone who does not swipe. The every-answer tests drive both the gestures and the rail.
+
+### The card
+
+- A large waveform of the clip, filled as it plays. Peaks come from the server (`peaks`: 100 numbers per item, a new
+  optional field), so both clients draw the same thing without decoding Opus; the web falls back to decoding the
+  blob when the field is missing.
+- **Changed: captions per line, not per word.** The items carry line timings (`startMs`, `endMs`) but no word
+  timings, so the line being spoken is highlighted and the others fade. Word-level captions wait until the server
+  stores word timestamps (UNKNOWN whether the transcription adapter returns them).
+- The asked line is bright; context lines are dimmed above and below.
+- The question sits at the bottom, above the rail; the task name and "12 of 30" at the top.
+- Haptic tick on each answer (Android: `HapticFeedbackType.Confirm`/`Reject`; web: `navigator.vibrate(10)` where
+  supported, nothing on iOS).
+
+### Pace
+
+- Every clip of the session is already fetched before the first card (both clients do this today), so swipes never
+  wait. The next clip is decoded and its waveform drawn while the current one plays.
+- An answer goes to the outbox at once with a send time 4 s ahead; Undo inside that window removes it, after it the
+  outbox sends it. A reload inside the window still sends it (the outbox is persistent).
+
+### Session and progress
+
+- Daily goal: 30 clips, about 5 minutes. A progress ring at the top fills per answer.
+- **Changed: "days labelled this week" instead of a streak.** A streak that breaks is loss aversion, the core of the
+  dark patterns the desk ruled out. A week strip shows the days with a session, and nothing is lost by missing one.
+  The reminder stays at most one notification a day, and only when uncertain clips wait.
+- At the goal the feed **ends**: an end card, no further clips, no autoplay of a next session. "Another 30" is a
+  button.
+- **Changed: the end card reports what the server can honestly say.** "Device detector +2% sure" needs a retrain
+  that happens on the owner's machine, not per session. The card shows, from `/tasks` before and after: progress
+  toward each gate ("device detector: 72 → 81 of 100 not-device lines needed to ship"), how many answers disagreed
+  with the model ("9 of 30, the most useful ones"), and answers still sending.
+
+### Feed order
+
+- A new `task=mixed` on `/next`: the server interleaves tasks.
+- **Changed: in runs of 3 to 5 clips of one task, not every clip a different question.** Switching the question on
+  every swipe slows each answer and raises errors (task switching); a short run keeps the rhythm and still varies.
+  The task name animates in at each switch.
+- Never the same speaker more than 4 in a row: items carry `speakerKey` (the voice group or provider label, opaque),
+  and the server orders by it. Never more than 3 from one conversation (already a rule).
+
+### Sound and privacy
+
+- **Android:** autoplay with sound only when headphones or a Bluetooth headset are connected. On the loudspeaker,
+  each clip waits for a tap and the card shows "Tap to play (speaker)": other people's voices should not play out
+  loud in public by surprise. A switch in settings turns speaker autoplay on.
+- **Web:** browsers already refuse sound before the first tap, so the feed opens on "Start with sound". It pauses
+  when the tab is hidden (`visibilitychange`) and does not resume until the owner taps; it never plays in a
+  background tab. Browsers do not tell a page whether headphones are connected, so the web cannot apply the
+  Android rule.
+- Captions show transcript text on screen; nothing else changes about where data lives.
+
+### Contract additions (server session to agree)
+
+- `GET /next?task=mixed`: items of every task, in runs of 3 to 5, speaker rule above.
+- Item fields, optional: `peaks` (100 numbers, 0 to 1), `speakerKey` (opaque string).
+- `POST /{id}` gains optional `answeredWith` (`swipe`, `button`, `sheet`, `key`): lets the evaluation see whether
+  gesture answers are noisier than taps.
+
+### Build
+
+- Web: a full-height pager with CSS scroll-snap (`scroll-snap-stop: always`, one clip per fling), horizontal swipes
+  by pointer events (`touch-action: pan-y`), keyboard as above. Tests: Playwright touch swipes and keys per task,
+  checking the bodies the fake server receives, plus undo and the end-at-goal rule.
+- Android: Compose `VerticalPager` with `beyondViewportPageCount = 3`, horizontal drag via `anchoredDraggable` on the
+  card, haptics, the speaker rule through `HeadphoneMonitor`. Tests: swipe gestures through the Compose test API
+  (`swipeLeft`, `swipeRight`, `swipeUp`) per task, asserting the exact POST bodies, plus undo.
+- Both keep every existing test passing; the rail buttons replace the big answer grid, and the old tests move to them.
+
 ## Decisions (the owner, 2026-10-24)
 
 1. **Both clients**, on the same API: the web app as designed, and a native Kotlin app in its own repo.
