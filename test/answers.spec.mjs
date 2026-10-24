@@ -177,6 +177,7 @@ test("wrong words: the corrected text is sent", async ({ page, request }) => {
   await start(page, "transcript");
   await swipe(page, "left");
   await sheetPick(page, "transcript", "wrong_words");
+  expect(await current(page).locator("textarea.correction").getAttribute("maxlength")).toBe("2000");
   await current(page).locator("textarea.correction").fill("Synthetic corrected words");
   await current(page).locator(".sheet [data-action=send]").click();
   const [p] = await waitPosts(request, 1);
@@ -264,7 +265,8 @@ test("the feed ends at the goal with an honest summary", async ({ page, request 
   await expect(end).toContainText("Session done");
   await expect(end).toContainText("8 answered, 0 skipped.");
   await expect(end).toContainText("disagreed with the model");
-  await expect(end).toContainText("Device audio: 0 → 8 of 100");
+  // Only the 4 "live" answers count toward the not-device goal.
+  await expect(end).toContainText("Device audio: 0 → 4 of 100");
   await expect(page.locator("#done-pending")).toHaveText("Every answer is saved on the server.");
   await expect(end.locator(".day.on")).toHaveCount(1);
   expect(await page.locator(".slide").count()).toBe(9); // 8 clips and the end: nothing after the goal

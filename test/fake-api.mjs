@@ -82,7 +82,8 @@ function validate(item, b) {
   for (const f of ["deviceType", "content", "transcript", "language", "overlap", "answeredWith"]) {
     if (b[f] != null && !VALUES[f].includes(b[f])) return { field: f, error: "unknown value" };
   }
-  if (b.correction != null && (typeof b.correction !== "string" || item.lines.length !== 1)) return { field: "correction", error: "single line only" };
+  if (b.correction != null && (typeof b.correction !== "string" || item.lines.length !== 1 || b.correction.length > 2000)) return { field: "correction", error: "single line, at most 2000 characters" };
+  if (b.listenedMs != null && !(Number.isInteger(b.listenedMs) && b.listenedMs >= 0 && b.listenedMs <= 600000)) return { field: "listenedMs", error: "0 to 600000" };
   return null;
 }
 
@@ -107,6 +108,8 @@ const server = createServer(async (req, res) => {
           task, ask, open: state.items.filter((i) => i.task === task && !answered(i)).length,
           labelled: [...state.labels.values()].filter((l) => l.task === task).length,
           goal: task === "device" ? 100 : null, goalLabel: task === "device" ? "not-device lines" : null,
+          // The device goal counts not-device lines, as the server does.
+          progress: task === "device" ? [...state.labels.values()].filter((l) => l.task === "device" && l.source && !l.source.includes("device")).length : null,
         })) });
       }
       if (rest === "/next" && req.method === "GET") {

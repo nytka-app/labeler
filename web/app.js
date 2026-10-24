@@ -11,6 +11,9 @@ const statusEl = document.getElementById("status");
 let session = null; // see startSession
 let authProblem = false;
 // Tests pass ?undoMs=0 to send at once; the owner gets 4 s to take an answer back.
+// The server's limits on an answer (POST /{id}); a longer value is a 400 that parks the answer.
+const MAX_LISTENED_MS = 600000;
+const MAX_CORRECTION = 2000;
 const UNDO_MS = (() => { const v = Number(new URLSearchParams(location.search).get("undoMs")); return Number.isFinite(v) && v >= 0 && location.search.includes("undoMs") ? v : 4000; })();
 
 // ---------- small DOM helpers ----------
@@ -73,7 +76,7 @@ async function showTasks() {
       el("div", {},
         el("h2", { text: TASK_NAMES[t.task] ?? t.task }),
         el("p", { class: "muted", text: taskLine(t) }),
-        t.goal ? el("progress", { max: t.goal, value: Math.min(t.labelled, t.goal), "aria-label": `${t.labelled} of ${t.goal}` }) : null),
+        t.goal ? el("progress", { max: t.goal, value: Math.min(toward(t), t.goal), "aria-label": `${toward(t)} of ${t.goal}` }) : null),
       el("button", {
         type: "button", class: "primary", "data-task": t.task, disabled: t.open === 0,
       }, t.open === 0 ? "Nothing waits" : "Start")))),
@@ -126,8 +129,11 @@ function mixedTask(list) {
   return { task: "mixed", open, labelled: list.reduce((n, t) => n + t.labelled, 0), goal: null };
 }
 
+/** Labels that count toward the goal (for device: not-device lines); older servers send only `labelled`. */
+function toward(t) { return t.progress ?? t.labelled; }
+
 function taskLine(t) {
-  const goal = t.goal ? ` · goal ${t.labelled} of ${t.goal}${t.goalLabel ? ` ${t.goalLabel}` : ""}` : "";
+  const goal = t.goal ? ` · goal ${toward(t)} of ${t.goal}${t.goalLabel ? ` ${t.goalLabel}` : ""}` : "";
   return `${t.open} waiting · ${t.labelled} labelled${goal}`;
 }
 
@@ -416,7 +422,7 @@ function openSheet(item, which, how) {
         sendButton(d.several.size > 0, () => answer(item, [...d.several], "sheet", d))));
     }
     if (pending === "wrong_words") {
-      const ta = el("textarea", { id: `correction-${item.id}`, class: "correction", rows: 3, value: d.correction, "aria-label": "Corrected text" });
+      const ta = el("textarea", { id: `correction-${item.id}`, class: "correction", rows: 3, maxLength: MAX_CORRECTION, value: d.correction, "aria-label": "Corrected text" });
       ta.addEventListener("input", () => { d.correction = ta.value; });
       parts.push(el("div", { class: "card inset" }, el("label", { for: ta.id, text: "What was said" }), ta,
         sendButton(true, () => answer(item, "wrong_words", "sheet", d))));
@@ -470,7 +476,7 @@ function answer(item, value, how, d = null) {
     if (d.language) body.language = d.language;
     if (value === "wrong_words" && item.lines.length === 1 && d.correction.trim() && d.correction !== item.lines[0].text) body.correction = d.correction.trim();
   }
-  body.listenedMs = Math.round(session.listened.ms);
+  body.listenedMs = Math.min(MAX_LISTENED_MS, Math.round(session.listened.ms));
   session.listened.ms = 0;
   const shown = body.source ? body.source.map((v) => LABELS[v] ?? v).join(" + ") : LABELS[value] ?? value;
   const guess = item.guess;
@@ -559,7 +565,7 @@ async function showEnd() {
     for (const t of after) {
       const b = s.before.find((x) => x.task === t.task);
       if (!t.goal || !b) continue;
-      gates.append(el("li", { text: `${TASK_NAMES[t.task]}: ${b.labelled} → ${t.labelled} of ${t.goal}${t.goalLabel ? ` ${t.goalLabel}` : ""}` }));
+      gates.append(el("li", { text: `${TASK_NAMES[t.task]}: ${toward(b)} → ${toward(t)} of ${t.goal}${t.goalLabel ? ` ${t.goalLabel}` : ""}` }));
     }
   } catch { /* the summary works without it */ }
   try {
