@@ -9,13 +9,16 @@ const browser = await chromium.launch();
 try {
   for (const scheme of ["dark", "light"]) {
     const page = await browser.newPage({ ...devices["Pixel 7"], colorScheme: scheme });
-    await page.goto(`http://127.0.0.1:${port}/`);
+    await page.goto(`http://127.0.0.1:${port}/?undoMs=0`);
     await page.locator("button[data-task=device]").waitFor();
     await page.screenshot({ path: `docs/img/tasks-${scheme}.png` });
     await page.locator("button[data-task=device]").click();
-    await page.locator("details.optional summary").click();
-    await page.locator(".session").waitFor();
+    await page.locator('.slide[aria-current="true"]').waitFor();
+    await page.waitForTimeout(1200); // let the waveform fill a little
     await page.screenshot({ path: `docs/img/card-${scheme}.png` });
+    await page.locator('.slide[aria-current="true"] .rail [data-action=no]').click();
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: `docs/img/sheet-${scheme}.png` });
     await page.close();
   }
 } finally {

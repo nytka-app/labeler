@@ -14,7 +14,8 @@ const WEB = fileURLToPath(new URL("../web/", import.meta.url));
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".webmanifest": "application/manifest+json" };
 
 const VALUES = {
-  source: ["me", "live", "device", "call", "none", "cant_tell"],
+  source: ["me", "not_me", "live", "device", "call", "none", "cant_tell"],
+  answeredWith: ["swipe", "button", "sheet", "key"],
   deviceType: ["tv", "phone", "laptop", "car", "assistant", "other"],
   content: ["speech", "singing", "vocal", "music", "other_sound", "silence"],
   transcript: ["right", "small_errors", "wrong_words", "made_up", "cant_hear"],
@@ -41,6 +42,10 @@ function reset() {
           segmentId: id * 10 + k, text: `Synthetic ${task} line ${i + 1}${k ? " (second voice)" : ""}`, isUser: task === "voice" && k === 0 && i % 2 === 0,
           startMs: k * 700, endMs: k * 700 + 700,
         })),
+        contextBefore: i % 2 ? [{ segmentId: id * 10 + 8, text: `Synthetic earlier line ${i + 1}`, isUser: true, startMs: -2400, endMs: -400 }] : [],
+        contextAfter: i % 3 ? [{ segmentId: id * 10 + 9, text: `Synthetic later line ${i + 1}`, isUser: false, startMs: 1700, endMs: 3200 }] : [],
+        peaks: i % 4 === 3 ? null : Array.from({ length: 100 }, (_, k) => Math.round(Math.abs(Math.sin((k + i) / 7)) * 100) / 100),
+        speakerKey: `vg-${i % 3}`,
         guess: i % 3 === 2 ? null : { model: "fake-1", value: ask === "source" ? "device" : ask === "transcript" ? "right" : "two", score: 0.4 + i / 20 },
         prefill: { language: i % 2 ? "en" : "uk" },
       });
@@ -74,7 +79,7 @@ function validate(item, b) {
     if (b.source.some((v) => !VALUES.source.includes(v))) return { field: "source", error: "unknown value" };
   }
   if (b.flags != null && (!Array.isArray(b.flags) || b.flags.some((v) => !VALUES.flags.includes(v)))) return { field: "flags", error: "unknown value" };
-  for (const f of ["deviceType", "content", "transcript", "language", "overlap"]) {
+  for (const f of ["deviceType", "content", "transcript", "language", "overlap", "answeredWith"]) {
     if (b[f] != null && !VALUES[f].includes(b[f])) return { field: f, error: "unknown value" };
   }
   if (b.correction != null && (typeof b.correction !== "string" || item.lines.length !== 1)) return { field: "correction", error: "single line only" };
@@ -106,9 +111,20 @@ const server = createServer(async (req, res) => {
       }
       if (rest === "/next" && req.method === "GET") {
         const task = url.searchParams.get("task");
-        if (!TASKS[task]) return json(res, 400, { field: "task", error: "unknown task" });
+        if (!TASKS[task] && task !== "mixed") return json(res, 400, { field: "task", error: "unknown task" });
         const limit = Math.min(50, Math.max(1, Number(url.searchParams.get("limit") ?? 30)));
-        const items = state.items.filter((i) => i.task === task && !answered(i)).slice(0, limit);
+        let items;
+        if (task === "mixed") {
+          // Runs of 4 of one task, rotating through the tasks.
+          const open = Object.keys(TASKS).map((t) => state.items.filter((i) => i.task === t && !answered(i)));
+          items = [];
+          for (let round = 0; items.length < limit && open.some((q) => q.length); round++) {
+            for (const q of open) items.push(...q.splice(0, 4));
+          }
+          items = items.slice(0, limit);
+        } else {
+          items = state.items.filter((i) => i.task === task && !answered(i)).slice(0, limit);
+        }
         return json(res, 200, { sessionId: "11111111-1111-4111-8111-111111111111", leasedUntil: new Date(Date.now() + 1800e3).toISOString(), items });
       }
       if (rest === "/voice/pending" && req.method === "GET") {
@@ -123,6 +139,18 @@ const server = createServer(async (req, res) => {
         if (!Array.isArray(b.labelIds) || b.labelIds.some((id) => !state.labels.has(id))) return json(res, 400, { field: "labelIds", error: "unknown label" });
         for (const id of b.labelIds) state.labels.get(id).confirmed = true;
         return json(res, 200, { learned: b.labelIds.length });
+      }
+      if (rest === "/labels" && req.method === "GET") {
+        const since = url.searchParams.get("since") ?? "";
+        const items = [...state.labels.values()].filter((l) => l.createdAt >= since)
+          .map((l) => ({ labelId: l.labelId, itemId: l.itemId, task: l.task, source: l.source ?? null, createdAt: l.createdAt, answeredWith: l.answeredWith ?? null }));
+        return json(res, 200, { items, nextSince: null });
+      }
+      if (rest === "/__seed-days" && req.method === "POST") {
+        // Test hook: labels on earlier days, for the week strip.
+        const b = await body(req);
+        for (const d of b.days) state.labels.set(state.nextLabel, { labelId: state.nextLabel++, itemId: -1, task: "voice", createdAt: `${d}T10:00:00Z` });
+        return json(res, 200, {});
       }
       let m = rest.match(/^\/(\d+)\/clip$/);
       if (m && req.method === "GET") {
@@ -145,7 +173,7 @@ const server = createServer(async (req, res) => {
         if (b.skipped) { state.byClient.set(b.clientId, null); return json(res, 200, { labelId: null, superseded: null }); }
         const prev = [...state.labels.values()].find((l) => l.itemId === item.id && !l.supersededBy);
         const labelId = state.nextLabel++;
-        state.labels.set(labelId, { labelId, itemId: item.id, task: item.task, ...b });
+        state.labels.set(labelId, { labelId, itemId: item.id, task: item.task, createdAt: new Date().toISOString(), ...b });
         if (prev) prev.supersededBy = labelId;
         state.byClient.set(b.clientId, labelId);
         return json(res, 200, { labelId, superseded: prev?.labelId ?? null });

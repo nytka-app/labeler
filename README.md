@@ -4,7 +4,8 @@
 
 <p align="center">
   <img src="docs/img/tasks-dark.png" alt="Task list: device audio, my voice, quiet audio, transcript, several voices" width="260">
-  <img src="docs/img/card-dark.png" alt="A clip card: play, the line's text, and the answers Me, Live person, Device, Call" width="260">
+  <img src="docs/img/card-dark.png" alt="A full-screen clip: waveform, the line as a caption, the question, and the Yes, Skip, More, No rail" width="260">
+  <img src="docs/img/sheet-dark.png" alt="After a left swipe: a one-tap sheet with the remaining answers" width="260">
 </p>
 
 ## Why
@@ -18,12 +19,15 @@ such page lost every label to a button bug. This app makes labelling a habit wit
 
 ## What it does
 
-- Short sessions of about 30 clips, picked by the server where its models are least sure, plus a random slice so
-  rates stay honest.
-- One question per clip, with big buttons and keys 1–7: where the voice comes from (me, a live person, a device,
-  a call, no voice), whether the transcript is right, or how many voices talk at once. Optional details below:
-  device type, kind of sound, quality flags, language, a corrected transcript.
+- A vertical feed of about 30 clips, one per screen, each playing as it arrives. The server picks the clips its
+  models are least sure about, plus a random slice so rates stay honest; "Mixed" interleaves tasks in short runs.
+- One fixed yes/no question per task: swipe right for yes, left for no, up to skip, down to go back, hold for every
+  answer and the optional details (device type, kind of sound, quality flags, language, a corrected transcript).
+  A button rail does the same for anyone who doesn't swipe; arrow keys and 1–7 on a desktop.
+- The model's guess stays hidden until after the answer, so it never steers the ear. Every answer can be undone for
+  4 seconds. The feed ends at the day's goal with what the session moved, and nothing after it.
 - Answers wait in the browser until the server confirms them, so a reload or a dropped connection loses nothing.
+  The feed pauses when the tab is hidden and never plays in the background.
 - Lines marked "me" teach the voiceprint only after a separate confirmation, because that cannot be undone.
 - Clips and labels stay on the Nytka server. This repository holds code only; its tests use synthetic tones.
 
