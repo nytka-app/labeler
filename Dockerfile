@@ -1,6 +1,6 @@
 # The labeler: static files and a Caddy proxy (deploy/Caddyfile). Needs NYTKA_LABELING_TOKEN; NYTKA_UPSTREAM
 # defaults to http://nytka:8080.
-FROM caddy:2.10-alpine
+FROM caddy:2.11-alpine
 
 ARG VERSION=dev
 ENV XDG_CONFIG_HOME=/tmp/caddy XDG_DATA_HOME=/tmp/caddy
